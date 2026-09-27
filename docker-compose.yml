@@ -23,7 +23,7 @@ services:
       start_period: 10s
 
   minio:
-    image: minio/minio:latest
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -37,7 +37,7 @@ services:
     # Server image often has no curl/mc. Readiness is minio-init, not this probe.
 
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     restart: "no"
     depends_on:
       minio:
