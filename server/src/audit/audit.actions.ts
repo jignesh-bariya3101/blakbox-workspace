@@ -1,0 +1,18 @@
+export const AuditAction = {
+  workspaceCreated: "workspace.created",
+  workspaceDeleted: "workspace.deleted",
+  workspaceTransferred: "workspace.ownership_transferred",
+  memberInvited: "member.invited",
+  memberInviteRevoked: "member.invite_revoked",
+  memberInviteAccepted: "member.invite_accepted",
+  memberRemoved: "member.removed",
+  memberLeft: "member.left",
+  memberRoleChanged: "member.role_changed",
+  documentUploaded: "document.uploaded",
+  documentRenamed: "document.renamed",
+  documentDeleted: "document.deleted",
+  documentDownloaded: "document.downloaded",
+  shareLinkCreated: "share_link.created",
+  shareLinkRevoked: "share_link.revoked",
+  shareLinkDownloaded: "share_link.downloaded",
+} as const;

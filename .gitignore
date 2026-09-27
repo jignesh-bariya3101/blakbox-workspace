@@ -1,0 +1,21 @@
+node_modules
+dist
+coverage
+*.log
+*.tsbuildinfo
+client/e2e/artifacts
+client/test-results
+client/playwright-report
+.DS_Store
+.minio-data
+
+# Local process notes. Not part of the submission.
+Prompts/
+
+# Locked Windows names; the committed trees are server/ and client/.
+Backend/
+Frontend/
+
+.env
+.env.local
+!.env.example

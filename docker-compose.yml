@@ -1,0 +1,100 @@
+# Clone the repo, then from this folder: docker compose up --build
+# Open http://127.0.0.1:8080 — the UI calls http://127.0.0.1:3000 (no proxy).
+# Postgres and MinIO data live in named volumes (survive `docker compose down`).
+# `docker compose down -v` deletes that data.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: blakbox_dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blakbox_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    # Server image often has no curl/mc. Readiness is minio-init, not this probe.
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        i=0
+        until mc alias set local http://minio:9000 minioadmin minioadmin; do
+          i=$$((i+1))
+          if [ "$$i" -gt 30 ]; then exit 1; fi
+          sleep 2
+        done
+        mc mb -p local/blakbox
+        mc anonymous set none local/blakbox
+
+  backend:
+    build: ./server
+    restart: unless-stopped
+    env_file:
+      - ./docker/backend.env
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+  frontend:
+    build:
+      context: ./client
+      args:
+        # Baked into the JS bundle. Browser calls this host, not nginx.
+        VITE_API_BASE_URL: http://127.0.0.1:3000
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  minio_data:

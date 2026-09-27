@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum DocumentStatus {
+  pending
+  ready
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+  replaced
+}
+
+/// Application user. Email is stored lowercase by the application.
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sessions             Session[]
+  memberships          WorkspaceMember[]
+  invitationsSent      WorkspaceInvitation[] @relation("InvitationInviter")
+  invitationsAccepted  WorkspaceInvitation[] @relation("InvitationAccepter")
+  uploadedDocuments    Document[]
+  shareLinksCreated    ShareLink[]
+  auditEvents          AuditEvent[]
+
+  @@map("users")
+}
+
+/// Server-side session. Only the SHA-256 of the cookie token is stored.
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Soft-deleted via deleted_at. Children are not cascaded.
+model Workspace {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  members      WorkspaceMember[]
+  invitations  WorkspaceInvitation[]
+  documents    Document[]
+  auditEvents  AuditEvent[]
+  cleanupJobs  StorageCleanupJob[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model WorkspaceInvitation {
+  id           String           @id @default(uuid()) @db.Uuid
+  workspaceId  String           @map("workspace_id") @db.Uuid
+  email        String
+  tokenHash    String           @unique @map("token_hash")
+  status       InvitationStatus
+  expiresAt    DateTime         @map("expires_at")
+  invitedById  String           @map("invited_by_id") @db.Uuid
+  acceptedById String?          @map("accepted_by_id") @db.Uuid
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  invitedBy  User      @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  acceptedBy User?     @relation("InvitationAccepter", fields: [acceptedById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, email])
+  @@map("workspace_invitations")
+}
+
+model Document {
+  id           String         @id @default(uuid()) @db.Uuid
+  workspaceId  String         @map("workspace_id") @db.Uuid
+  uploadedById String         @map("uploaded_by_id") @db.Uuid
+  filename     String
+  storageKey   String         @unique @map("storage_key")
+  byteSize     Int            @map("byte_size")
+  mimeType     String         @map("mime_type")
+  status       DocumentStatus
+  deletedAt    DateTime?      @map("deleted_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  uploadedBy  User                @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  shareLinks  ShareLink[]
+  cleanupJobs StorageCleanupJob[]
+
+  @@index([workspaceId, createdAt])
+  @@map("documents")
+}
+
+model ShareLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  documentId    String    @map("document_id") @db.Uuid
+  createdById   String    @map("created_by_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash")
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  downloadCount Int       @default(0) @map("download_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([documentId])
+  @@map("share_links")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  requestId    String   @map("request_id")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  actor     User?     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, createdAt, id])
+  @@map("audit_events")
+}
+
+/// Repair queue for object-storage deletes. Not a general job system.
+model StorageCleanupJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  objectKey   String    @map("object_key")
+  workspaceId String?   @map("workspace_id") @db.Uuid
+  documentId  String?   @map("document_id") @db.Uuid
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  document  Document?  @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@map("storage_cleanup_jobs")
+}
