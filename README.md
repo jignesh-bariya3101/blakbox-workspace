@@ -9,26 +9,20 @@ Stack: NestJS (`/api/v1`), React + Vite, PostgreSQL, MinIO. No Redis, queue, or 
 ## Run (Docker)
 
 You need Docker Desktop or Docker Engine with Compose v2 (Windows, macOS, or Linux). You do not copy `.env` files for this path. Folders are `server` and `client` on every OS.
-
-```bash
 docker compose up --build
-```
 
 Open **http://127.0.0.1:8080** (use `127.0.0.1`, not `localhost`). Register an account; there is no seed user.
 
-The browser calls **http://127.0.0.1:3000**. On start the API runs `prisma migrate deploy`. Data lives in Docker volumes `postgres_data` and `minio_data`. Stop with `docker compose down`. Backup and wipe: `docs/local-setup.md`.
+The browser calls **http://127.0.0.1:3000**. On start, the API runs `prisma migrate deploy`. Data lives in Docker volumes `postgres_data` and `minio_data`. Stop with `docker compose down`. Backup and wipe: `docs/local-setup.md`.
 
 Without Docker: `docs/local-setup.md` section B.
 
-## Layout
-
-```
+## Layou
 server/             Nest API, Prisma, integration tests
 client/             React UI
 docker/backend.env  Compose API config
 docs/               decisions, architecture, database, setup, audit write-up
 docker-compose.yml
-```
 
 ## Architecture
 
@@ -41,15 +35,12 @@ A common stack list named Fastify. This repo uses NestJS (Express adapter) so mo
 More detail: `docs/architecture.md`.
 
 ## Assumptions (short)
-
-| Area | What we shipped |
-|---|---|
-| Auth | Email + password, Argon2id. Opaque session token in an httpOnly, SameSite=Lax cookie. Only SHA-256 of the token is stored. 7 days, no sliding refresh. Logout revokes that session. No email verify or password reset (no mailer). |
-| Roles | OWNER, ADMIN, MEMBER. Creator is OWNER. One OWNER per workspace (partial unique index). Owner cannot leave; they transfer to any current member or delete the workspace. |
-| Shares | Capability URL. 32 random bytes, hashed at rest. Default 7 days, max 30. Download streams through the API. Expired, revoked, and deleted cases return the same public not-found. |
-| Invites | No email. API returns the token once. Accept needs a session whose email matches. Register does not auto-join. One pending invite per workspace+email. |
-| Delete | Documents and workspaces: soft-delete. Membership: hard-delete. Their share links and pending invites in that workspace are revoked. Files they uploaded stay. |
-| Extra | Workspace audit trail for OWNER/ADMIN. Why this and not versioning or AV: `docs/product-improvement.md`. |
+Auth : Email + password, Argon2id. Opaque session token in an httpOnly, SameSite=Lax cookie. Only SHA-256 of the token is stored. 7 days, no sliding refresh. Logout revokes that session. No email verification or password reset (no mailer). |
+Roles: OWNER, ADMIN, MEMBER. Creator is OWNER. One OWNER per workspace (partial unique index). Owner cannot leave; they transfer to any current member or delete the workspace. |
+Shares: Capability URL. 32 random bytes, hashed at rest. Default 7 days, max 30. Download streams through the API. Expired, revoked, and deleted cases return the same public not-found. |
+Invites: No email. API returns the token once. Accept needs a session whose email matches. Register does not auto-join. One pending invite per workspace+email. |
+Delete: Documents and workspaces: soft-delete. Membership: hard-delete. Their share links and pending invites in that workspace are revoked. Files they uploaded stay. |
+Extra: Workspace audit trail for OWNER/ADMIN. Why this and not versioning or AV: `docs/product-improvement.md`. |
 
 ## Authorization
 
@@ -89,20 +80,15 @@ Postgres and MinIO do not share a transaction. The database is application truth
 Upload: `pending` row, PUT object, then `ready`. Failed PUT drops the pending row and enqueues cleanup if the object might exist. Delete: soft-delete + revoke links + cleanup job, then object delete with retries. A client retry is a new upload. An in-flight download may finish after revoke or delete.
 
 ## Tests
-
-```bash
 cd server
 npm test
-```
 
-```bash
 cd client
 npm test
-```
 
 API tests hit real Postgres (`STORAGE_DRIVER=memory`). They cover auth, IDOR, roles, invite accept (including concurrent), upload/download/delete, share expire/revoke, storage failure, and constraints.
 
-UI unit tests cover `?next=` after login, permission helpers, and error mapping. Browser script: `cd client` then `npm run test:e2e` (API on :3000, Vite on :5173).
+UI unit tests cover `?next=` after login, permission helpers, and error mapping. Browser script: `cd client` then `npm run test:e2e` (API on:3000, Vite on:5173).
 
 ## Trade-offs and limits
 
@@ -114,4 +100,4 @@ Next: HTTPS + `Secure` cookies; a real mailer for invites; optional presigned GE
 
 ## Agent use
 
-I used Cursor while building this. Product decisions were written first and treated as the contract. I reviewed authz (404 vs 403), hashed tokens, “no files in Postgres,” and the test suite myself. The code and tests are what I will walk through in an interview.
+I used Cursor while building this. Product decisions were written first and treated as the contract. I reviewed authz (404 vs 403), hashed tokens, "no files in Postgres," and the test suite myself. I can explain the codebase, the features, and what we would add next.
